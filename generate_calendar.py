@@ -1,4 +1,3 @@
-```python
 import requests
 from datetime import date, timedelta, datetime, timezone
 from icalendar import Calendar, Event
@@ -267,4 +266,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-```
