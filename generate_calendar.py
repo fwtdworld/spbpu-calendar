@@ -1,5 +1,6 @@
+```python
 import requests
-from datetime import date, timedelta, datetime
+from datetime import date, timedelta, datetime, timezone
 from icalendar import Calendar, Event
 
 GROUP_ID = 45122
@@ -24,7 +25,6 @@ def get_week_schedule(day):
 
 
 def parse_date(value):
-    """Дата РУЗ: YYYY-MM-DD"""
     return date.fromisoformat(str(value)[:10])
 
 
@@ -36,11 +36,12 @@ def main():
 
     calendar = Calendar()
 
-    calendar.add("prodid", "-//SPbPU RUZ Calendar//")
+    calendar.add("prodid", "-//SPbPU RUZ Calendar//Sofia//")
     calendar.add("version", "2.0")
     calendar.add("calscale", "GREGORIAN")
     calendar.add("X-WR-CALNAME", "СПбПУ — 3332705/60001")
     calendar.add("X-WR-TIMEZONE", "Europe/Moscow")
+    calendar.add("X-WR-CALDESC", "Расписание СПбПУ, группа 3332705/60001")
 
     current_week = SEMESTER_START
 
@@ -60,13 +61,10 @@ def main():
 
         days = data.get("days", [])
 
-        print(f"Дней в ответе: {len(days)}")
-
         for day_data in days:
 
             lesson_date = parse_date(day_data["date"])
 
-            # Не выходим за пределы семестра
             if not (
                 SEMESTER_START
                 <= lesson_date
@@ -102,9 +100,7 @@ def main():
                     summary += f" ({lesson_type})"
 
                 # Аудитория
-                auditories = lesson.get(
-                    "auditories"
-                ) or []
+                auditories = lesson.get("auditories") or []
 
                 location = ""
 
@@ -112,10 +108,7 @@ def main():
 
                     auditorium = auditories[0]
 
-                    room = auditorium.get(
-                        "name",
-                        ""
-                    )
+                    room = auditorium.get("name", "")
 
                     building = auditorium.get(
                         "building",
@@ -136,17 +129,13 @@ def main():
                         location = f"ауд. {room}"
 
                 # Преподаватель
-                teachers = lesson.get(
-                    "teachers"
-                ) or []
+                teachers = lesson.get("teachers") or []
 
                 teacher_names = []
 
                 for teacher in teachers:
 
-                    name = teacher.get(
-                        "full_name"
-                    )
+                    name = teacher.get("full_name")
 
                     if name:
                         teacher_names.append(name)
@@ -172,18 +161,52 @@ def main():
                     description_parts
                 )
 
+                # --------------------------------
                 # Создаём событие
+                # --------------------------------
+
                 event = Event()
 
                 uid = (
                     f"spbpu-{GROUP_ID}-"
-                    f"{lesson_date}-"
-                    f"{start}-"
+                    f"{lesson_date.isoformat()}-"
+                    f"{start}-{end}-"
                     f"{subject}-"
-                    f"{lesson.get('type', 0)}"
+                    f"{lesson.get('type', 0)}-"
+                    f"{lesson.get('additional_info', '')}"
                 )
 
                 event.add("uid", uid)
+
+                # Время в Москве → UTC
+                start_local = datetime.combine(
+                    lesson_date,
+                    start_time
+                )
+
+                end_local = datetime.combine(
+                    lesson_date,
+                    end_time
+                )
+
+                moscow_offset = timedelta(hours=3)
+
+                start_utc = (
+                    start_local - moscow_offset
+                ).replace(tzinfo=timezone.utc)
+
+                end_utc = (
+                    end_local - moscow_offset
+                ).replace(tzinfo=timezone.utc)
+
+                event.add("dtstart", start_utc)
+                event.add("dtend", end_utc)
+
+                # Обязательная отметка времени создания
+                event.add(
+                    "dtstamp",
+                    datetime.now(timezone.utc)
+                )
 
                 event.add(
                     "summary",
@@ -191,19 +214,13 @@ def main():
                 )
 
                 event.add(
-                    "dtstart",
-                    datetime.combine(
-                        lesson_date,
-                        start_time
-                    )
+                    "status",
+                    "CONFIRMED"
                 )
 
                 event.add(
-                    "dtend",
-                    datetime.combine(
-                        lesson_date,
-                        end_time
-                    )
+                    "sequence",
+                    0
                 )
 
                 if location:
@@ -227,15 +244,10 @@ def main():
 
     print()
     print("=" * 50)
-    print(
-        f"Обработано недель: {processed_weeks}"
-    )
-    print(
-        f"Найдено занятий: {total_events}"
-    )
+    print(f"Обработано недель: {processed_weeks}")
+    print(f"Найдено занятий: {total_events}")
     print("=" * 50)
 
-    # Защита от пустого календаря
     if total_events == 0:
         raise RuntimeError(
             "API не вернул ни одного занятия."
@@ -250,10 +262,9 @@ def main():
             calendar.to_ical()
         )
 
-    print(
-        "schedule.ics успешно создан!"
-    )
+    print("schedule.ics успешно создан!")
 
 
 if __name__ == "__main__":
     main()
+```
